@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>휘매쓰 연산 챌린지!</title>
+    <!-- MathJax 라이브러리 로드 -->
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] },
+            startup: {
+                ready: () => {
+                    MathJax.startup.defaultReady();
+                }
+            }
+        };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f8ff;
+            text-align: center;
+            margin: 0;
+            padding: 0;
+        }
+        #start-screen, #game-screen, #end-screen {
+            display: none;
+        }
+        #start-screen.visible, #game-screen.visible, #end-screen.visible {
+            display: block;
+        }
+        h1 {
+            color: #ff4500;
+        }
+        .button {
+            padding: 15px 25px;
+            font-size: 16px;
+            margin: 10px;
+            cursor: pointer;
+        }
+        #energy-bar {
+            width: 100%;
+            height: 30px;
+            background-color: #ddd;
+            margin-top: 20px;
+            position: relative;
+        }
+        #energy {
+            height: 100%;
+            background-color: #76c7c0;
+            width: 100%;
+            transition: width 0.2s linear;
+        }
+        /* 버튼 크기 조정 */
+        #choices button {
+            padding: 10px 20px;
+            font-size: 24px;
+            margin: 10px;
+            cursor: pointer;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        #stats {
+            margin-top: 20px;
+            font-size: 18px;
+        }
+        #message {
+            font-size: 20px;
+            color: red;
+            margin-top: 20px;
+            min-height: 40px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="start-screen" class="visible">
+    <h1>휘매쓰 연산 챌린지!</h1>
+    <h2>난이도를 선택하세요</h2>
+    <button class="button" onclick="startGame('highest')">최상</button>
+    <button class="button" onclick="startGame('high')">상</button>
+    <button class="button" onclick="startGame('medium')">중</button>
+    <button class="button" onclick="startGame('low')">하</button>
+</div>
+
+<div id="game-screen">
+    <h1>휘매쓰 연산 챌린지!</h1>
+    <div id="energy-bar">
+        <div id="energy"></div>
+    </div>
+    <div id="question"></div>
+    <div id="choices"></div>
+    <div id="message"></div>
+    <div id="stats">
+        <p>점수: <span id="score">0</span></p>
+        <p>남은 기회: <span id="lives">3</span></p>
+        <p>총 게임 시간: <span id="game-time">0</span>초</p>
+    </div>
+</div>
+
+<div id="end-screen">
+    <h1>게임 종료!</h1>
+    <p>최종 점수: <span id="final-score"></span></p>
+    <p>총 게임 시간: <span id="final-time"></span>초</p>
+    <button class="button" onclick="restartGame()">다시 시작</button>
+</div>
+
+<script>
+    window.onload = function() {
+        let difficultySettings = {
+            'highest': { time: 20, points: 20 },
+            'high': { time: 30, points: 15 },
+            'medium': { time: 40, points: 13 },
+            'low': { time: Infinity, points: 10 }
+        };
+        let difficulty;
+        let timeLimit;
+        let timeRemaining;
+        let score = 0;
+        let lives = 3;
+        let totalGameTime = 0;
+        let gameInterval;
+        let energyInterval;
+        let gameStartTime;
+        let timeReduction = 0.99;
+        let correctAnswerNum, correctAnswerDen;
+
+        window.startGame = function(selectedDifficulty) {
+            difficulty = selectedDifficulty;
+            timeLimit = difficultySettings[difficulty].time;
+            document.getElementById('start-screen').classList.remove('visible');
+            document.getElementById('game-screen').classList.add('visible');
+            gameStartTime = Date.now();
+            generateQuestion();
+            updateStats();
+            if (difficulty !== 'low') {
+                startEnergyBar();
+            }
+            gameInterval = setInterval(() => {
+                totalGameTime = Math.floor((Date.now() - gameStartTime) / 1000);
+                document.getElementById('game-time').innerText = totalGameTime;
+            }, 1000);
+        }
+
+        function generateQuestion() {
+            document.getElementById('message').innerHTML = '';
+            let fraction = generateFraction();
+            let numerator = fraction.numerator;
+            let denominator = fraction.denominator;
+            let simplified = simplifyFraction(numerator, denominator);
+            correctAnswerNum = simplified.numerator;
+            correctAnswerDen = simplified.denominator;
+
+            let choices = generateChoices(simplified);
+
+            document.getElementById('question').innerHTML = '약분해서 기약분수로 나타내세요: $$\\dfrac{' + numerator + '}{' + denominator + '}$$';
+            MathJax.typesetPromise();
+            let choicesDiv = document.getElementById('choices');
+            choicesDiv.innerHTML = '';
+            choices.forEach(choice => {
+                let btn = document.createElement('button');
+                btn.innerHTML = '$$' + choice + '$$';
+                btn.onclick = () => checkAnswer(choice);
+                choicesDiv.appendChild(btn);
+            });
+            MathJax.typesetPromise();
+            if (difficulty !== 'low') {
+                timeRemaining = timeLimit;
+                startEnergyBar();
+            }
+        }
+
+        function generateFraction() {
+            let numerator, denominator;
+            do {
+                numerator = Math.floor(Math.random() * 19) + 2; // 2부터 20까지
+                denominator = Math.floor(Math.random() * 19) + 2; // 2부터 20까지
+            } while (gcd(numerator, denominator) === 1 || numerator >= denominator);
+            return { numerator: numerator, denominator: denominator };
+        }
+
+        function gcd(a, b) {
+            while (b !== 0) {
+                let t = b;
+                b = a % b;
+                a = t;
+            }
+            return a;
+        }
+
+        function simplifyFraction(numerator, denominator) {
+            let commonDivisor = gcd(numerator, denominator);
+            numerator = numerator / commonDivisor;
+            denominator = denominator / commonDivisor;
+            return { numerator: numerator, denominator: denominator };
+        }
+
+        function generateChoices(correct) {
+            let choices = new Set();
+            let correctChoice = '\\dfrac{' + correct.numerator + '}{' + correct.denominator + '}';
+            choices.add(correctChoice);
+
+            while (choices.size < 4) {
+                let fakeNumerator = correct.numerator;
+                let fakeDenominator = correct.denominator;
+
+                if (Math.random() < 0.5) {
+                    fakeNumerator += Math.floor(Math.random() * 3) - 1; // -1, 0, +1
+                    if (fakeNumerator <= 0) fakeNumerator = 1;
+                } else {
+                    fakeDenominator += Math.floor(Math.random() * 3) - 1; // -1, 0, +1
+                    if (fakeDenominator <= 0) fakeDenominator = 1;
+                }
+
+                if (fakeNumerator === correct.numerator && fakeDenominator === correct.denominator) continue;
+
+                let fakeChoice = '\\dfrac{' + fakeNumerator + '}{' + fakeDenominator + '}';
+                choices.add(fakeChoice);
+            }
+
+            let choicesArray = Array.from(choices);
+            choicesArray.sort(() => Math.random() - 0.5);
+            return choicesArray;
+        }
+
+        function checkAnswer(selected) {
+            let pattern = /\\dfrac\{(\d+)\}\{(\d+)\}/;
+            let match = pattern.exec(selected);
+            if (match) {
+                let selectedNum = parseInt(match[1]);
+                let selectedDen = parseInt(match[2]);
+                if (selectedNum === correctAnswerNum && selectedDen === correctAnswerDen) {
+                    score += difficultySettings[difficulty].points;
+                    updateStats();
+                    if (difficulty !== 'low') {
+                        timeLimit *= timeReduction;
+                    }
+                    generateQuestion();
+                } else {
+                    lives--;
+                    updateStats();
+                    document.getElementById('message').innerHTML = '틀렸습니다! 정답은 $$\\dfrac{' + correctAnswerNum + '}{' + correctAnswerDen + '}$$ 입니다.';
+                    MathJax.typesetPromise();
+                    if (lives <= 0) {
+                        endGame();
+                    } else {
+                        if (difficulty !== 'low') {
+                            timeLimit *= timeReduction;
+                        }
+                        setTimeout(generateQuestion, 2000);
+                    }
+                }
+            }
+        }
+
+        function startEnergyBar() {
+            clearInterval(energyInterval);
+            let energyBar = document.getElementById('energy');
+            let width = 100;
+            let decrement = 100 / (timeLimit * 10);
+            energyBar.style.width = '100%'; // 에너지바 초기화
+            energyInterval = setInterval(() => {
+                width -= decrement;
+                if (width <= 0) {
+                    clearInterval(energyInterval);
+                    lives--;
+                    updateStats();
+                    document.getElementById('message').innerHTML = '시간 초과! 정답은 $$\\dfrac{' + correctAnswerNum + '}{' + correctAnswerDen + '}$$ 입니다.';
+                    MathJax.typesetPromise();
+                    if (lives <= 0) {
+                        endGame();
+                    } else {
+                        if (difficulty !== 'low') {
+                            timeLimit *= timeReduction;
+                        }
+                        setTimeout(generateQuestion, 2000);
+                    }
+                } else {
+                    energyBar.style.width = width + '%';
+                }
+            }, 100);
+        }
+
+        function updateStats() {
+            document.getElementById('score').innerText = score;
+            document.getElementById('lives').innerText = lives;
+        }
+
+        function endGame() {
+            clearInterval(gameInterval);
+            clearInterval(energyInterval);
+            document.getElementById('game-screen').classList.remove('visible');
+            document.getElementById('end-screen').classList.add('visible');
+            document.getElementById('final-score').innerText = score;
+            document.getElementById('final-time').innerText = totalGameTime;
+        }
+
+        window.restartGame = function() {
+            score = 0;
+            lives = 3;
+            totalGameTime = 0;
+            document.getElementById('end-screen').classList.remove('visible');
+            document.getElementById('message').innerHTML = '';
+            document.getElementById('start-screen').classList.add('visible');
+        }
+    };
+</script>
+
+</body>
+</html>
